@@ -10,7 +10,6 @@ from requests.exceptions import ConnectionError
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import matplotlib.pyplot as plt
 import sklearn
 from sklearn.linear_model import LinearRegression
 
@@ -51,7 +50,7 @@ class Brew():
         # fetch builds from Teiid
 	docs = []
 	start_date = datetime.datetime.strptime(
-            '2017-07-25', '%Y-%m-%d').date()
+            '2017-07-30', '%Y-%m-%d').date()
         end_date = datetime.date.today()
 	previous_date = start_date
 	count = 0
@@ -66,37 +65,31 @@ class Brew():
 
 	return docs
 
-    def copy_data_in_csv(self, docs): 
-	# copy builds in csv file
-	for build in docs:
-	    with open('test.csv', 'a') as csvfile:
-        	writer = csv.writer(csvfile, delimiter=',')
-		if not build["creation_time"] or not build["start_time"]: 
-		    diff = None 
-		else: 
-		    if build["creation_time"].find(".") != -1:
-			created_time = datetime.datetime.strptime(build["creation_time"], '%Y-%m-%d %H:%M:%S.%f')
-		    else:
-			created_time = datetime.datetime.strptime(build["creation_time"], '%Y-%m-%d %H:%M:%S')
-		
-		    if build["start_time"].find(".") != -1:
-			start_time = datetime.datetime.strptime(build["start_time"], '%Y-%m-%d %H:%M:%S.%f')
-	            else:
-			start_time = datetime.datetime.strptime(build["start_time"], '%Y-%m-%d %H:%M:%S')
-	            diff = str(created_time - start_time)
-		
-	    	writer.writerow([build["package_name"], build["extra"], build["creation_time"], build["completion_time"], build["package_id"], build["build_id"], build["state"], build["source"], build["epoch"], build["version"], build["completion_ts"], build["owner_id"], build["owner_name"], build["nvr"], build["start_time"], build["creation_event_id"], build["start_ts"], build["volume_id"], build["creation_ts"], build["name"], build["task_id"], build["release"], diff])
+    def copy_data_in_csv(self, docs):
+        # This is just faster in terms of retrieval. The calculation of diff and removal of None 
+        # would be easier in dataframes.
+        print len(docs)
+        the_file = open("metric.csv", "w")
+        writer = csv.DictWriter(the_file, docs[0].keys())
+        writer.writeheader()
+        writer.writerows(docs)
+        data_df = pd.read_csv("metric.csv")
+	data_df['waiting_time'] = data_df.creation_ts - data_df.start_ts
+	self.linear_regression(data_df)
+	the_file.close()
 
-	
-    def linear_regression(self):
-	builds = self.find_data()
-	df = pd.DataFrame(builds)
-	df.columns = ["package_name", "extra", "creation_time", "completion_time", "package_id", "build_id", "state", "source", "epoch", "version", "completion_ts", "owner_id", "owner_name", "nvr", "start_time", "creation_event_id", "start_ts", "volume_id", "creation_ts", "name", "task_id", "release", "start_creation_diff"]
-	lm = LinearRegression()git
-	lm.fit(X, builds.start_creation_diff)
-	predicted_load = lm.predict(X)
-	
-	
+    def linear_regression(self, data_df):
+	lm = LinearRegression()
+	new_data_frame = data_df[data_df.columns.difference(["waiting_time", "package_name", "source", "epoch", "version", "owner_name", "nvr", "name", "release", "volume_name", "start_time", "creation_time", "completion_time"])]
+	new_data_frame = new_data_frame.fillna(0)
+	new_data_frame = new_data_frame.replace("{'image': {'autorebuild': False, 'help':", 1, regex=True)
+	for index, row in new_data_frame.iterrows():
+	    new_data_frame.loc[index, "completion_ts"] /= (10**9)
+	    new_data_frame.loc[index, "start_ts"] /= (10**9)
+	    new_data_frame.loc[index, "creation_ts"] /= (10**9)
+        print(new_data_frame)
+	lm.fit(new_data_frame, data_df.waiting_time)
+
 br = Brew()
 docs = br.find_data()
 br.copy_data_in_csv(docs)
