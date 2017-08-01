@@ -62,7 +62,6 @@ class Brew():
 	    count += 1
 	    if count%5 == 0:
 		time.sleep(1)
-
 	return docs
 
     def copy_data_in_csv(self, docs):
@@ -87,7 +86,6 @@ class Brew():
 	    new_data_frame.loc[index, "completion_ts"] /= (10**9)
 	    new_data_frame.loc[index, "start_ts"] /= (10**9)
 	    new_data_frame.loc[index, "creation_ts"] /= (10**9)
-        print(new_data_frame)
 	lm.fit(new_data_frame, data_df.waiting_time)
 
 br = Brew()
