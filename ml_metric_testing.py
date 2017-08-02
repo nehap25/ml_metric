@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import sklearn
+from sklearn import datasets, linear_model
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 
 class Brew():
 
@@ -50,7 +52,7 @@ class Brew():
         # fetch builds from Teiid
 	docs = []
 	start_date = datetime.datetime.strptime(
-            '2017-07-30', '%Y-%m-%d').date()
+            '2013-07-30', '%Y-%m-%d').date()
         end_date = datetime.date.today()
 	previous_date = start_date
 	count = 0
@@ -65,9 +67,9 @@ class Brew():
 	return docs
 
     def copy_data_in_csv(self, docs):
+
         # This is just faster in terms of retrieval. The calculation of diff and removal of None 
         # would be easier in dataframes.
-        print len(docs)
         the_file = open("metric.csv", "w")
         writer = csv.DictWriter(the_file, docs[0].keys())
         writer.writeheader()
@@ -78,16 +80,79 @@ class Brew():
 	the_file.close()
 
     def linear_regression(self, data_df):
-	lm = LinearRegression()
-	new_data_frame = data_df[data_df.columns.difference(["waiting_time", "package_name", "source", "epoch", "version", "owner_name", "nvr", "name", "release", "volume_name", "start_time", "creation_time", "completion_time"])]
-	new_data_frame = new_data_frame.fillna(0)
-	new_data_frame = new_data_frame.replace("{'image': {'autorebuild': False, 'help':", 1, regex=True)
-	for index, row in new_data_frame.iterrows():
-	    new_data_frame.loc[index, "completion_ts"] /= (10**9)
-	    new_data_frame.loc[index, "start_ts"] /= (10**9)
-	    new_data_frame.loc[index, "creation_ts"] /= (10**9)
-	lm.fit(new_data_frame, data_df.waiting_time)
 
+	# Pre-process the data to bring it in the suitable format
+	regression_df = data_df[['extra', 'package_id', 'build_id', 'owner_id', 'creation_event_id', 'state','start_ts','creation_ts']]
+	regression_df['extra'] = regression_df['extra'].replace("{", 1, regex=True)
+	regression_df['extra'] = regression_df['extra'].fillna(0)
+	regression_df = regression_df.dropna()
+	wait_time_df = data_df[['waiting_time']]
+	wait_time_df = wait_time_df.dropna()
+	regression_df['start_ts'] = (regression_df['start_ts'] - regression_df['start_ts'].mean())/regression_df['start_ts'].std(ddof=0)
+	regression_df['creation_ts'] = (regression_df['creation_ts'] - regression_df['creation_ts'].mean())/regression_df['creation_ts'].std(ddof=0)
+	print ("regression_df", regression_df)
+	print ("wait_time_df", wait_time_df)
+
+	# Split the data into testing and training set
+	X_train, X_test, y_train, y_test = train_test_split(regression_df, wait_time_df, test_size=0.33, random_state=42)
+
+	X_train.reset_index(inplace=True)
+	X_test.reset_index(inplace=True)
+	y_train.reset_index(inplace=True)
+	y_test.reset_index(inplace=True)
+
+	
+	np.random.seed(0)
+
+	classifiers = dict(ols=linear_model.LinearRegression(),
+                   ridge=linear_model.Ridge(alpha=.1))
+
+	fignum = 1
+	for name, clf in classifiers.items():
+	    fig = plt.figure(fignum, figsize=(4, 3))
+	    plt.clf()
+	    plt.title(name)
+	    ax = plt.axes([.12, .12, .8, .8])
+
+        for _ in range(6):
+            this_X = .1 * np.random.normal(size=(2, 1)) + X_train
+            clf.fit(this_X, y_train)
+
+        ax.plot(X_test, clf.predict(X_test), color='.5')
+        ax.scatter(this_X, y_train, s=3, c='.5', marker='o', zorder=10)
+
+    	clf.fit(X_train, y_train)
+    	ax.plot(X_test, clf.predict(X_test), linewidth=2, color='blue')
+    	ax.scatter(X_train, y_train, s=30, c='r', marker='+', zorder=10)
+
+    	ax.set_xticks(())
+    	ax.set_yticks(())
+    	ax.set_ylim((0, 1.6))
+    	ax.set_xlabel('X')
+    	ax.set_ylabel('y')
+    	ax.set_xlim(0, 2)
+    	fignum += 1
+
+	plt.show()
+
+	"""
+	print len(X_train), len(y_train), len(X_test), len(y_test)
+
+	# Create linear regression object
+	regr = linear_model.LinearRegression()
+
+	# Train the model using the training sets
+	regr.fit(X_train, y_train)
+
+	# The coefficients
+	print('Coefficients: \n', regr.coef_)
+
+	print('Variance score: %.2f' % regr.score(X_test, y_test))
+
+	print "=============================="
+	print regr.predict(X_test)
+	print y_test
+	"""
 br = Brew()
 docs = br.find_data()
 br.copy_data_in_csv(docs)
