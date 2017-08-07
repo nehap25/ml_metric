@@ -6,6 +6,7 @@ import getpass
 import koji
 import datetime
 import time
+import math
 from requests.exceptions import ConnectionError
 import numpy as np
 import pandas as pd
@@ -53,7 +54,7 @@ class Brew():
         # fetch builds from Teiid
 	docs = []
 	start_date = datetime.datetime.strptime(
-            '2017-08-01', '%Y-%m-%d').date()
+            '2017-08-05', '%Y-%m-%d').date()
         end_date = datetime.date.today()
 	previous_date = start_date
 	count = 0
@@ -83,9 +84,40 @@ class Brew():
 	data_df["per_day"] = data_df['creation_time'].apply(lambda x: x[:10])
 	data_frame = data_df.groupby(['per_day', 'waiting_time'])
 	test = data_frame.size().unstack()
-	for index, row in test.iteritems():
-    	    print (test[index, row])
-	
+	allHeaders = list(test.columns.values)
+	totalWaitingTime = []
+	minWaitingTime = []
+	maxWaitingTime = []
+	avgWaitingTime = []
+
+	for i, (index, row) in enumerate(test.iterrows()):
+	    series = test.loc[index, row]
+	    count = 0
+	    allHeadersindex = 0
+	    minValue = 1000000000
+	    maxValue = 0
+	    numCounts = 0
+	    for (item, value) in series.iteritems():
+		waiting_time = allHeaders[allHeadersindex]
+		if not math.isnan(item): 
+		    numCounts += item
+		    count += item * waiting_time
+		    if waiting_time < minValue:
+		        minValue = waiting_time
+		    if waiting_time > maxValue:
+			maxValue = waiting_time
+		allHeadersindex += 1
+	    avgTime = count/numCounts
+	    totalWaitingTime.append(count)
+	    minWaitingTime.append(minValue)
+	    maxWaitingTime.append(maxValue)
+	    avgWaitingTime.append(avgTime)
+
+	test['totalWaitingTime'] = totalWaitingTime
+	test['minWaitingTime'] = minWaitingTime
+	test['maxWaitingTime'] = maxWaitingTime
+	test['avgWaitingTime'] = avgWaitingTime
+	new_df = test[['totalWaitingTime', 'minWaitingTime', 'maxWaitingTime', 'avgWaitingTime']]
 """
 	# Pre-process the data to bring it in the suitable format
 	regression_df = data_df[['extra', 'package_id', 'build_id', 'state','start_ts','creation_ts']]
