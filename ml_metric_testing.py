@@ -13,9 +13,13 @@ import pandas as pd
 import scipy.stats as stats
 import sklearn
 from sklearn import datasets, linear_model
+from statsmodels.tsa.arima_model import ARIMA
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 import statsmodels.formula.api as sm
+from pandas.plotting import autocorrelation_plot
+from statsmodels.tsa.arima_model import ARIMA
+
 
 class Brew():
 
@@ -54,7 +58,7 @@ class Brew():
         # fetch builds from Teiid
 	docs = []
 	start_date = datetime.datetime.strptime(
-            '2017-08-05', '%Y-%m-%d').date()
+            '2016-08-05', '%Y-%m-%d').date()
         end_date = datetime.date.today()
 	previous_date = start_date
 	count = 0
@@ -71,53 +75,28 @@ class Brew():
     def copy_data_in_csv(self, docs):
         # This is just faster in terms of retrieval. The calculation of diff and removal of None 
         # would be easier in dataframes.
-        the_file = open("test.csv", "w")
+        the_file = open("ml.csv", "w")
         writer = csv.DictWriter(the_file, docs[0].keys())
         writer.writeheader()
         writer.writerows(docs)
-        data_df = pd.read_csv("test.csv")
+        data_df = pd.read_csv("ml.csv")
 	data_df['waiting_time'] = data_df.creation_ts - data_df.start_ts
 	self.linear_regression(data_df)
 	the_file.close()
 
     def linear_regression(self, data_df):
-	data_df["per_day"] = data_df['creation_time'].apply(lambda x: x[:10])
-	data_frame = data_df.groupby(['per_day', 'waiting_time'])
-	test = data_frame.size().unstack()
-	allHeaders = list(test.columns.values)
-	totalWaitingTime = []
-	minWaitingTime = []
-	maxWaitingTime = []
-	avgWaitingTime = []
+	derieved_columns = data_df['waiting_time'].groupby(pd.DatetimeIndex(data_df['creation_time']).normalize()).describe()
+	derieved_columns = derieved_columns[['count','mean','min','max']]
 
-	for i, (index, row) in enumerate(test.iterrows()):
-	    series = test.loc[index, row]
-	    count = 0
-	    allHeadersindex = 0
-	    minValue = 1000000000
-	    maxValue = 0
-	    numCounts = 0
-	    for (item, value) in series.iteritems():
-		waiting_time = allHeaders[allHeadersindex]
-		if not math.isnan(item): 
-		    numCounts += item
-		    count += item * waiting_time
-		    if waiting_time < minValue:
-		        minValue = waiting_time
-		    if waiting_time > maxValue:
-			maxValue = waiting_time
-		allHeadersindex += 1
-	    avgTime = count/numCounts
-	    totalWaitingTime.append(count)
-	    minWaitingTime.append(minValue)
-	    maxWaitingTime.append(maxValue)
-	    avgWaitingTime.append(avgTime)
+	derieved_columns.index = pd.to_datetime(derieved_columns.index)
+	test_arima = derieved_columns['mean']
 
-	test['totalWaitingTime'] = totalWaitingTime
-	test['minWaitingTime'] = minWaitingTime
-	test['maxWaitingTime'] = maxWaitingTime
-	test['avgWaitingTime'] = avgWaitingTime
-	new_df = test[['totalWaitingTime', 'minWaitingTime', 'maxWaitingTime', 'avgWaitingTime']]
+	model = ARIMA(test_arima, order=(10,0,0))
+	model_fit = model.fit()
+	print(model_fit.summary())
+	output = model_fit.forecast(steps=7)[0]
+	print (output)
+
 """
 	# Pre-process the data to bring it in the suitable format
 	regression_df = data_df[['extra', 'package_id', 'build_id', 'state','start_ts','creation_ts']]
@@ -171,7 +150,7 @@ class Brew():
 	plt.yticks(())
 
 	plt.show()
-"""
+	"""
 
 br = Brew()
 docs = br.find_data()
